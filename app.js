@@ -9,7 +9,6 @@ import timetableRoutes from "./routes/timetables.js";
 dotenv.config();
 
 export const initServer = (port) => {
-  // ustawienia nic nie zmieniac :D
   const PORT = port;
 
   const app = express();
