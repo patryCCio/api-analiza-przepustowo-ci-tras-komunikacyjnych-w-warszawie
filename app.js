@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 
 // trasy
 import timetableRoutes from "./routes/timetables.js";
+import districtRoutes from "./routes/districts.js";
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ export const initServer = (port) => {
 
   // trasy
   app.use("/api/timetables", timetableRoutes);
+  app.use("/api/districts", districtRoutes);
   app.listen(3000, () => {
     console.log("The server is listening at " + PORT);
   }) || 3000;

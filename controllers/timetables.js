@@ -3,8 +3,6 @@ import { getConnection } from "../config/db-config.js";
 export const getTimetableInfoAll = async (req, res) => {
   const { table } = req.params;
 
-  console.log("lol");
-
   var db = getConnection();
 
   const q = `SELECT * FROM ${table}`;
