@@ -22,11 +22,13 @@ export const getDistrictsInfo = (req, res) => {
             });
 
             if (!isDistrict) {
+              const pLat = result[x].pin_latitude.replace(",", ".");
+              const pLon = result[x].pin_longitude.replace(",", ".");
               array.push({
                 id: result[x].district_id,
                 name: result[x].name,
-                pin_latitude: result[x].pin_latitude,
-                pin_longitude: result[x].pin_longitude,
+                pin_latitude: parseFloat(pLat),
+                pin_longitude: parseFloat(pLon),
                 population_density: result[x].population_density,
                 update_date: result[x].update_date,
                 warsaw_population: result[x].warsaw_population,
@@ -37,26 +39,28 @@ export const getDistrictsInfo = (req, res) => {
           const arrayToReturn = [];
 
           for (let x = 0; x < array.length; x++) {
+            const array2 = [];
             result.forEach((el, index) => {
-              const array2 = [];
               if (el.district_id == array[x].id) {
+                const latitude = el.latitude.replace(",", ".");
+                const longitude = el.longitude.replace(",", ".");
+
                 array2.push({
-                  id: index,
-                  latitude: el.latitude,
-                  longitude: el.longitude,
+                  latitude: parseFloat(latitude),
+                  longitude: parseFloat(longitude),
                 });
               }
-              console.log(array2.length);
-              arrayToReturn.push({
-                id: array[x].district_id,
-                name: array[x].name,
-                pin_latitude: array[x].pin_latitude,
-                pin_longitude: array[x].pin_longitude,
-                population_density: array[x].population_density,
-                update_date: array[x].update_date,
-                warsaw_population: array[x].warsaw_population,
-                border_coords: array2,
-              });
+            });
+
+            arrayToReturn.push({
+              id: array[x].id,
+              name: array[x].name,
+              pin_latitude: parseFloat(array[x].pin_latitude),
+              pin_longitude: parseFloat(array[x].pin_longitude),
+              population_density: array[x].population_density,
+              update_date: array[x].update_date,
+              warsaw_population: array[x].warsaw_population,
+              border_coords: array2,
             });
           }
 
