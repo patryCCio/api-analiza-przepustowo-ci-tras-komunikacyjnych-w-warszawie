@@ -1,0 +1,1 @@
+docker run -t -i -p 5001:5000 -v "D:\Work\inzynierka\warsaw-traffic-analysis-for-ztm\api\osrm:/data" osrm/osrm-backend osrm-routed --algorithm mld /data/mazowieckie-latest-tram.osrm

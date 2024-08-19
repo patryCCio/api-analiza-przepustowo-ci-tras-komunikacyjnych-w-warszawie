@@ -1,0 +1,22 @@
+{
+  "name": "Analiza przepustowości transportu miejskiego - Patryk Szczerbiński",
+  "version": "1.0.0",
+  "description": "Analiza przepustowości transportu miejskiego",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "author": "Patryk Szczerbinski",
+  "license": "ISC",
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mysql": "^2.18.1",
+    "mysql2": "^3.11.0",
+    "nodemon": "^3.0.1"
+  }
+}
