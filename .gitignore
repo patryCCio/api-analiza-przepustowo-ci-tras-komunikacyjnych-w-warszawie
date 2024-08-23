@@ -10,6 +10,13 @@ npm-debug.*
 *.orig.*
 web-build/
 
+predictions.json
+responseData.json
+traffic_data.json
+
+routes/op.js
+controllers/op.js
+
 osrm/
 
 .env
