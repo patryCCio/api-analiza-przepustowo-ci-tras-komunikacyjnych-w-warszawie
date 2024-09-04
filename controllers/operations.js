@@ -2,6 +2,7 @@ import {
   getCoordsWithDistances,
   getDistanceFromLatLonInMeters,
   getDistances,
+  getOnlyDistances,
   getStopsWithinRadius,
   sortLines,
 } from "../functions.js";
@@ -995,7 +996,7 @@ const createGraph = (allDone) => {
         const longitude = nextStop.longitude;
         const latitude = nextStop.latitude;
 
-        const adjustedDistance = distance - capacityPerHour;
+        const adjustedDistance = distance - capacityPerHour / 20;
 
         if (adjustedDistance < 0) {
           distance = 0;
@@ -1058,15 +1059,66 @@ class PriorityQueue {
 
   enqueue(val, priority) {
     this.values.push({ val, priority });
-    this.sort();
+    this.bubbleUp();
   }
 
   dequeue() {
-    return this.values.shift();
+    const min = this.values[0];
+    const end = this.values.pop();
+    if (this.values.length > 0) {
+      this.values[0] = end;
+      this.sinkDown();
+    }
+    return min;
   }
 
-  sort() {
-    this.values.sort((a, b) => a.priority - b.priority);
+  bubbleUp() {
+    let idx = this.values.length - 1;
+    const element = this.values[idx];
+
+    while (idx > 0) {
+      let parentIdx = Math.floor((idx - 1) / 2);
+      let parent = this.values[parentIdx];
+      if (element.priority >= parent.priority) break;
+      this.values[parentIdx] = element;
+      this.values[idx] = parent;
+      idx = parentIdx;
+    }
+  }
+
+  sinkDown() {
+    let idx = 0;
+    const length = this.values.length;
+    const element = this.values[0];
+
+    while (true) {
+      let leftChildIdx = 2 * idx + 1;
+      let rightChildIdx = 2 * idx + 2;
+      let leftChild, rightChild;
+      let swap = null;
+
+      if (leftChildIdx < length) {
+        leftChild = this.values[leftChildIdx];
+        if (leftChild.priority < element.priority) {
+          swap = leftChildIdx;
+        }
+      }
+
+      if (rightChildIdx < length) {
+        rightChild = this.values[rightChildIdx];
+        if (
+          (swap === null && rightChild.priority < element.priority) ||
+          (swap !== null && rightChild.priority < leftChild.priority)
+        ) {
+          swap = rightChildIdx;
+        }
+      }
+
+      if (swap === null) break;
+      this.values[idx] = this.values[swap];
+      this.values[swap] = element;
+      idx = swap;
+    }
   }
 
   isEmpty() {
@@ -1095,20 +1147,6 @@ const reconstructPath = (graph, path) => {
   return detailedPath;
 };
 
-const groupRoutesByTraceId = (routes) => {
-  const grouped = {};
-
-  routes.forEach((route) => {
-    const traceId = route[0].trace_id;
-    if (!grouped[traceId]) {
-      grouped[traceId] = [];
-    }
-    grouped[traceId].push(...route);
-  });
-
-  return Object.values(grouped);
-};
-
 let startNodes = [];
 let endNodes = [];
 let totalNodes = [];
@@ -1122,12 +1160,14 @@ const dijkstra = async (graph, startNode, endNode) => {
   const distances = {};
   const previous = {};
   const previousTraceId = {};
+  const numTransfers = {};
   const pq = new PriorityQueue();
 
   for (let node in graph) {
     distances[node] = Infinity;
     previous[node] = null;
     previousTraceId[node] = null;
+    numTransfers[node] = 0;
     pq.enqueue(node, Infinity);
   }
 
@@ -1151,11 +1191,13 @@ const dijkstra = async (graph, startNode, endNode) => {
     if (distances[smallest] !== Infinity) {
       for (let neighbor of graph[smallest]) {
         let additionalCost = 0;
+
+        // Progresywne karanie za każdą kolejną przesiadkę
         if (
           previousTraceId[smallest] !== null &&
           neighbor.trace_id !== previousTraceId[smallest]
         ) {
-          additionalCost = 1000;
+          additionalCost = 1000 * (numTransfers[smallest] + 1);
         }
 
         const candidate =
@@ -1166,6 +1208,9 @@ const dijkstra = async (graph, startNode, endNode) => {
           distances[nextNeighbor] = candidate;
           previous[nextNeighbor] = smallest;
           previousTraceId[nextNeighbor] = neighbor.trace_id;
+          numTransfers[nextNeighbor] =
+            numTransfers[smallest] +
+            (neighbor.trace_id !== previousTraceId[smallest] ? 1 : 0);
           pq.enqueue(nextNeighbor, candidate);
         }
       }
@@ -1175,14 +1220,13 @@ const dijkstra = async (graph, startNode, endNode) => {
   console.log("Ścieżka nie znaleziona");
   return [];
 };
-
 const findNearestStop = async (from, to, graph) => {
   let nearestStartStopId = null;
   let nearestEndStopId = null;
   let minDistance = Infinity;
   let isIn = false;
 
-  const maxLength = 5;
+  const maxLength = 40;
 
   Object.keys(graph).forEach((nodeId) => {
     if (check == "start") {
@@ -1262,8 +1306,6 @@ export const getShortest = async (req, res) => {
 
   const trainSpeed = 15.55; //  m/s
   const walkSpeed = 1.75; //  m/s
-  const radius = 2;
-  const radiusSmaller = 1;
 
   try {
     const d = getDistanceFromLatLonInMeters(
@@ -1327,67 +1369,101 @@ export const getShortest = async (req, res) => {
     } else {
       console.log(d, "km");
 
-      let count = 6;
+      const q = `
+        SELECT 
+        routes.id AS route_id, 
+        routes.order, 
+        routes.stop_id, 
+        routes.trace_id, 
+        traces.stop_from, 
+        traces.stop_end,
+        stops.longitude, 
+        stops.latitude,
+        stops.number_of_stop,
+        stops.name AS stop_name,
+        vehicles.route,
+        vehicles.type,
+        vehicles.capacity,
+        COUNT(timetables.id) AS count_timetables,
+        (COUNT(timetables.id)) AS average_per_hour,
+        (vehicles.capacity * (COUNT(timetables.id))) AS capacity_per_hour
+        FROM routes 
+        JOIN traces ON traces.id = routes.trace_id 
+        JOIN stops ON stops.id = routes.stop_id
+        JOIN vehicles ON vehicles.id = traces.vehicle_id
+        LEFT JOIN timetables ON timetables.route_id = routes.id
+          AND TIME_FORMAT(NOW(), '%H:%i') <= timetables.time
+          AND TIME_FORMAT(DATE_ADD(NOW(), INTERVAL 1 HOUR), '%H:%i') > timetables.time
+        GROUP BY 
+          routes.id, 
+          routes.order, 
+          routes.stop_id, 
+          routes.trace_id, 
+          traces.stop_from, 
+          traces.stop_end,
+          stops.longitude, 
+          stops.latitude,
+          stops.number_of_stop,
+          stops.name,
+          vehicles.route,
+          vehicles.type,
+          vehicles.capacity
+        ORDER BY routes.trace_id, routes.order
+      `;
 
-      if (d >= 3 && d < 4) {
-        count = 1;
-      } else if (d >= 4 && d < 7) {
-        count = 2;
-      } else if (d >= 7 && d < 10) {
-        count = 3;
-      } else if (d >= 10 && d < 14) {
-        count = 4;
-      } else if (d >= 14 && d < 18) {
-        count = 5;
-      } else if (d >= 18) {
-        count = 6;
-      }
+      const [respons] = await db.query(q);
 
-      const array = [];
+      // Grupowanie po trace_id
+      const groupedData = respons.reduce((acc, row) => {
+        const traceId = row.trace_id;
 
-      const fromAr = getStopsWithinRadius(from, stops, radius);
-      const toAr = getStopsWithinRadius(to, stops, radius);
-
-      for (let i = 0; i <= count; i++) {
-        const lat = from.latitude + (to.latitude - from.latitude) * (i / count);
-        const lon =
-          from.longitude + (to.longitude - from.longitude) * (i / count);
-
-        const point = { latitude: lat, longitude: lon };
-        array.push(point);
-      }
-
-      const stopsGenerated = [];
-
-      for (const item of array) {
-        const values = await getStopsWithinRadius(item, stops, radiusSmaller);
-
-        if (values.length > 0) {
-          stopsGenerated.push(...values);
+        // Jeśli nie ma jeszcze grupy dla trace_id, stwórz nową
+        if (!acc[traceId]) {
+          acc[traceId] = {
+            trace_id: traceId,
+            routes: [],
+          };
         }
-      }
 
-      const allGenerated = await getDataForGraph(stopsGenerated);
-      const rdFromAr = await getDataForGraph(fromAr);
-      const rdToAr = await getDataForGraph(toAr);
+        acc[traceId].routes.push({
+          route_id: row.route_id,
+          order: row.order,
+          stop_id: row.stop_id,
+          trace_id: row.trace_id,
+          stop_from: row.stop_from,
+          stop_end: row.stop_end,
+          longitude: row.longitude,
+          latitude: row.latitude,
+          number_of_stop: row.number_of_stop,
+          stop_name: row.stop_name,
+          route: row.route,
+          type: row.type,
+          capacity: row.capacity,
+          count_timetables: row.count_timetables,
+          average_per_hour: row.average_per_hour,
+          capacity_per_hour: row.capacity_per_hour,
+        });
 
-      const all = [...rdFromAr, ...allGenerated, ...rdToAr];
+        return acc;
+      }, {});
 
-      const uniqueTraceIds = new Set();
-      const allRd = [];
+      const resultArray = Object.values(groupedData);
 
-      all.forEach((el) => {
-        if (!uniqueTraceIds.has(el[0].trace_id)) {
-          uniqueTraceIds.add(el[0].trace_id);
-          allRd.push(el);
-        }
+      const all = [];
+
+      resultArray.forEach((el) => {
+        const sorted = el.routes.sort((a, b) => a.order - b.order);
+        all.push(sorted);
       });
 
-      const groupedRoutes = groupRoutesByTraceId(allRd);
+      const allDone = [];
 
-      const allDone = await Promise.all(
-        groupedRoutes.map((element) => getDistances(element, districts))
-      );
+      for (const item of all) {
+        const coord = await getOnlyDistances(item);
+        if (coord != null && coord.length > 0) {
+          allDone.push(coord);
+        }
+      }
 
       let graph = createGraph(allDone);
       let cleanedGraph = removeDuplicateEdges(graph);
@@ -1398,7 +1474,9 @@ export const getShortest = async (req, res) => {
         maxWeightThreshold
       );
 
+      console.log("zaczynam dijkstra");
       await findNearestStop(from, to, cleanedGraph);
+      console.log("skonczylem!");
 
       if (shortestPath.length > 0) {
         const detailedPath = [];
@@ -1547,9 +1625,79 @@ export const getShortest = async (req, res) => {
           }
         });
 
+        const dataToRd2 = dataToRd.filter((el) => {
+          let count = 0;
+          el.forEach((el2) => {
+            if (el2.type == "Pieszo") {
+              count++;
+            }
+          });
+
+          if (count - 2 < 5) {
+            return el;
+          }
+        });
+
+        const dataToRd3 = [];
+
+
+        dataToRd2.forEach((el) => {
+          const arr = [];
+          let x = 0;
+
+          while (x < el.length) {
+            const current = el[x];
+            const next = el[x + 1];
+
+            if (current.type === "Pieszo" && next && next.type === "Pieszo") {
+              arr.push({
+                type: "Pieszo",
+                data: [
+                  {
+                    ride: false,
+                    type: "Pieszo",
+                    longitude: current.data[0].longitude,
+                    latitude: current.data[0].latitude,
+                    latFrom: current.data[0].latFrom,
+                    latTo: next.data[0].latTo,
+                    lonFrom: current.data[0].lonFrom,
+                    lonTo: next.data[0].lonTo,
+                  },
+                ],
+              });
+
+              x += 2;
+            } else {
+              arr.push(current);
+              x++;
+            }
+          }
+
+          dataToRd3.push(arr);
+        });
+
+        const dataToRd4 = [];
+
+
+        dataToRd3.forEach((el) => {
+          let count = 0;
+          el.forEach((el2) => {
+            if (el2.type == "Pieszo"){
+              count++;
+            }
+          })
+
+          if ((count - 2) <= 2){
+            dataToRd4.push(el);
+          }
+        })
+
+
+        // return;
+
         const arrToReturn = [];
 
-        for (const el of dataToRd) {
+        for (const el of dataToRd4) {
           const rr = await getCoordsWithDistances(el);
           arrToReturn.push(rr);
         }
@@ -1690,9 +1838,15 @@ export const getShortest = async (req, res) => {
 
         dToReturn.forEach((el) => {
           let count = 0;
-          el.arr.forEach((el2) => {
+          el.arr.forEach((el2, index) => {
             if (el2.type == "Pieszo") {
               count++;
+            }
+
+            if (index > 0) {
+              if (el.arr[index - 1].type == "Pieszo") {
+                count--;
+              }
             }
           });
 

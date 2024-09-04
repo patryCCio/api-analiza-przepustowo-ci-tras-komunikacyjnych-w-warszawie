@@ -374,6 +374,70 @@ export const getDistances = async (trace, districts) => {
   }
 };
 
+export const getOnlyDistances = async (array) => {
+  const rd = [];
+
+  let index = 0;
+  const type = array[0].type;
+  let string = "";
+
+  for (const el of array) {
+    string += el.longitude + "," + el.latitude;
+    if (index != array.length - 1) {
+      string += ";";
+    }
+
+    index++;
+  }
+
+  const url =
+    "/route/v1/driving/" + string + "?overview=full&geometries=geojson";
+
+  try {
+    let r;
+
+    const d = process.env.IP_URL;
+
+    if (type == "Autobus") {
+      r = await api.get(d + "5000" + url);
+    } else if (type == "Tramwaj") {
+      r = await api.get(d + "5001" + url);
+    } else if (type == "Pociąg") {
+      r = await api.get(d + "5002" + url);
+    } else if (type == "Pieszo") {
+      r = await api.get(d + "5000" + url);
+    }
+
+    if (
+      r.data.routes &&
+      r.data.routes.length > 0 &&
+      r.data.routes[0].geometry &&
+      r.data.routes[0].geometry.coordinates
+    ) {
+      const other_info = r.data.routes[0].legs;
+
+      array.forEach((el, index) => {
+        if (index == array.length - 1) {
+          rd.push({
+            ...el,
+            distance: 0,
+          });
+        } else {
+          rd.push({
+            ...el,
+            distance: other_info[index].distance,
+          });
+        }
+      });
+
+      return rd;
+    } else return null;
+  } catch (err) {
+    console.log(err);
+    return null;
+  }
+};
+
 export const getCoordsWithDistances = async (array) => {
   const rd = [];
 
