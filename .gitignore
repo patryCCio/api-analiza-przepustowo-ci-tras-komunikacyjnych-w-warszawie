@@ -14,10 +14,27 @@ predictions.json
 responseData.json
 traffic_data.json
 
+response_p0.json
+response_p1.json
+response_p2.json
+response_p3.json
+response_p4.json
+
+t0.json
+t1.json
+t2.json
+
+helper.json
+best.py
+best2.py
+best3.py
+
 routes/op.js
 controllers/op.js
 
 osrm/
+
+controllers/copy_operations.js
 
 .env
 # macOS

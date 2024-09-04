@@ -45,11 +45,15 @@ export const getRouteByTraceId = async (req, res) => {
       .find((el) => el.order == 0)
       .timetables.find((el) => el.order == 0);
 
-
     for (let x = 0; x < routes.length; x++) {
       if (x >= 1) {
         const timePrev = routes[x - 1].timetables.find((el) => el.order == 0);
         const timeActual = routes[x].timetables.find((el) => el.order == 0);
+
+        if (timePrev == undefined || timeActual == undefined) {
+          res.status(500).json("Bad!");
+          return;
+        }
 
         const timeDifference = await getTimeDifferenceInMinutes(
           timePrev.time,

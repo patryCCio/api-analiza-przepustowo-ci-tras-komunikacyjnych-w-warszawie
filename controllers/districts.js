@@ -24,6 +24,7 @@ export const getDistrictsInfo = async (req, res) => {
           pin_latitude: parseFloat(pLat),
           pin_longitude: parseFloat(pLon),
           population_density: result[x].population_density,
+          area: result[x].area,
           update_date: result[x].update_date,
           warsaw_population: result[x].warsaw_population,
         });
@@ -52,6 +53,7 @@ export const getDistrictsInfo = async (req, res) => {
         pin_latitude: parseFloat(array[x].pin_latitude),
         pin_longitude: parseFloat(array[x].pin_longitude),
         population_density: array[x].population_density,
+        area: array[x].area,
         update_date: array[x].update_date,
         warsaw_population: array[x].warsaw_population,
         border_coords: array2,
