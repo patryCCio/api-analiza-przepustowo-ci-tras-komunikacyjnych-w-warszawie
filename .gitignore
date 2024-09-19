@@ -31,6 +31,11 @@ best3.py
 
 routes/op.js
 controllers/op.js
+routes/help.js
+routes/help2.txt
+
+start_train.bat
+create_train.bat
 
 osrm/
 

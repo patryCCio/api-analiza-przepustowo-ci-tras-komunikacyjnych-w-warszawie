@@ -6,7 +6,6 @@ export const getVehicles = async (req, res) => {
 
   try {
     const [result] = await db.query(query);
-
     const sortedLines = sortLines(result);
 
     res.status(200).json(sortedLines);

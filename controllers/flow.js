@@ -11,12 +11,11 @@ import {
 import api from "../api.js";
 
 export const getTrafficFlow = async (req, res) => {
-  const { order_time } = req.params;
 
   const query = "SELECT * FROM traffic_flow WHERE order_time >= 0";
 
   try {
-    const [result] = await db.query(query, [order_time]);
+    const [result] = await db.query(query);
 
     const t0 = result.filter((el) => el.order_time == 0);
     const t1 = result.filter((el) => el.order_time == 1);
@@ -263,17 +262,16 @@ const runPythonScript = (t0, t1, t2, outputFilePath) => {
 
 const prepareData = async () => {
   try {
-    const radius = 200;
+    const radius = 12000;
     const string = 52.2297 + "," + 21.0122 + ";r=" + radius;
     const url = `https://data.traffic.hereapi.com/v7/flow?in=circle:${string}&locationReferencing=shape&apiKey=${process.env.API_KEY_HERE}`;
 
-    const dataP0 = await fs.readFile("response_p0.json", "utf8");
-    const p0D = JSON.parse(dataP0);
+    // const dataP0 = await fs.readFile("response_p0.json", "utf8");
+    // const p0D = JSON.parse(dataP0);
 
-    // const here = await api.get(url);
-    // const p0D = here.data;
+    const here = await api.get(url);
+    const p0D = here.data;
 
-    return;
 
     if (p0D.results.length > 0) {
       const withDuplicates = [];
@@ -325,62 +323,6 @@ const prepareData = async () => {
 
       const query4 = "SELECT * FROM traffic_flow WHERE order_time < 0";
       const [res4] = await db.query(query4);
-
-      const query5 = `SELECT * FROM districts LEFT JOIN districts_geo ON districts.id = districts_geo.district_id`;
-
-      const [result] = await db.query(query5);
-
-      const array = [];
-      for (let x = 0; x < result.length; x++) {
-        let isDistrict = false;
-        array.forEach((arr) => {
-          if (arr.name == result[x].name) {
-            isDistrict = true;
-          }
-        });
-
-        if (!isDistrict) {
-          const pLat = result[x].pin_latitude.replace(",", ".");
-          const pLon = result[x].pin_longitude.replace(",", ".");
-          array.push({
-            id: result[x].district_id,
-            name: result[x].name,
-            pin_latitude: parseFloat(pLat),
-            pin_longitude: parseFloat(pLon),
-            population_density: result[x].population_density,
-            update_date: result[x].update_date,
-            warsaw_population: result[x].warsaw_population,
-          });
-        }
-      }
-
-      const arrayToReturn = [];
-
-      for (let x = 0; x < array.length; x++) {
-        const array2 = [];
-        result.forEach((el, index) => {
-          if (el.district_id == array[x].id) {
-            const latitude = el.latitude.replace(",", ".");
-            const longitude = el.longitude.replace(",", ".");
-
-            array2.push({
-              latitude: parseFloat(latitude),
-              longitude: parseFloat(longitude),
-            });
-          }
-        });
-
-        arrayToReturn.push({
-          id: array[x].id,
-          name: array[x].name,
-          pin_latitude: parseFloat(array[x].pin_latitude),
-          pin_longitude: parseFloat(array[x].pin_longitude),
-          population_density: array[x].population_density,
-          update_date: array[x].update_date,
-          warsaw_population: array[x].warsaw_population,
-          border_coords: array2,
-        });
-      }
 
       const p1 = res4.filter((el) => el.order_time == -1);
       const p2 = res4.filter((el) => el.order_time == -2);
@@ -470,35 +412,13 @@ const prepareData = async () => {
       console.log(all1Rd.length);
       console.log(all2Rd.length);
 
-      const t0Ar = await joinDistrict(all0Rd, arrayToReturn);
-      const t1Ar = [];
-      const t2Ar = [];
-
-      t0Ar.forEach((el, index) => {
-        t1Ar.push({
-          ...all1Rd[index],
-          population_density: el.population_density,
-          district_name: el.district_name,
-        });
-      });
-
-      t0Ar.forEach((el, index) => {
-        t2Ar.push({
-          ...all2Rd[index],
-          population_density: el.population_density,
-          district_name: el.district_name,
-        });
-      });
-
       const t0 = "t0.json";
       const t1 = "t1.json";
       const t2 = "t2.json";
 
-      // return;
-
-      fs.writeFile(t0, JSON.stringify(t0Ar));
-      fs.writeFile(t1, JSON.stringify(t1Ar));
-      fs.writeFile(t2, JSON.stringify(t2Ar));
+      fs.writeFile(t0, JSON.stringify(all0Rd));
+      fs.writeFile(t1, JSON.stringify(all1Rd));
+      fs.writeFile(t2, JSON.stringify(all2Rd));
 
       console.log("Uruchamiam skrypt Pythona...");
 
@@ -531,7 +451,6 @@ const prepareData = async () => {
         });
       });
 
-      console.log("pred", predictionsReady.length);
 
       const toAdd = [...p0, ...predictionsReady];
 
@@ -556,8 +475,6 @@ const prepareData = async () => {
         "INSERT INTO traffic_flow (name, speed, speedUncapped, freeFlow, jamFactor, confidence, traversability, longitude, latitude, order_time, is_anomaly) VALUES ?";
 
       const [res5] = await db.query(query, [values]);
-      console.log("inserted rows", res5.affectedRows);
-      console.log(toAdd.length);
     }
   } catch (err) {
     console.log(err);
@@ -570,13 +487,10 @@ const intervalFunction = async () => {
   prepareData();
 };
 
-let intervalLoop = 0;
 
 export const startInterval = () => {
   const currentMinutes = new Date().getMinutes();
-  intervalLoop++;
   if (currentMinutes % 1 == 0) {
-    console.log("loop:", intervalLoop);
     setInterval(intervalFunction, 1000 * 60 * 15);
     intervalFunction();
     return true;

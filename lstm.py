@@ -39,12 +39,10 @@ def process_group(args):
     next_pred = model.predict(X_train, verbose=0)
     
     predictions.append(next_pred[0, -1])
-    print("First prediction (before scaling):", next_pred[0, -1])
 
     current_seq = np.append(X_train[:, 1:, :], next_pred[:, -1:, :], axis=1)
     next_pred = model.predict(current_seq, verbose=0)
     predictions.append(next_pred[0, -1])
-    print("Second prediction (before scaling):", next_pred[0, -1])
 
     result = []
     prediction_array = np.array(predictions).reshape(-1, 3)
@@ -64,12 +62,10 @@ def process_group(args):
         if jamFactor > 8 and speed > 12:
             speed *= (10 - jamFactor) / 10
 
-        print(f"Predicted values after scaling - Speed: {speed}, FreeFlow: {freeFlow}, JamFactor: {jamFactor}")
 
         confidence = clamp(float(records_group[2]['confidence']), 0, 1)
 
         is_anomaly = int(anomalies[i] == -1)
-        print(f"Anomaly detected: {is_anomaly == 1}")
 
         result.append({
             'name': records_group[2]['name'],
@@ -87,54 +83,59 @@ def process_group(args):
     return result
 
 def main():
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+        t0 = sys.argv[1]
+        t1 = sys.argv[2]
+        t2 = sys.argv[3]
+        output_file = sys.argv[4]
 
-    t0 = sys.argv[1]
-    t1 = sys.argv[2]
-    t2 = sys.argv[3]
-    output_file = sys.argv[4]
+        with open(t0, 'r', encoding='utf-8') as f:
+            dataT0 = json.load(f)
 
-    with open(t0, 'r', encoding='utf-8') as f:
-        dataT0 = json.load(f)
+        with open(t1, 'r', encoding='utf-8') as f:  
+            dataT1 = json.load(f)
 
-    with open(t1, 'r', encoding='utf-8') as f:  
-        dataT1 = json.load(f)
+        with open(t2, 'r', encoding='utf-8') as f:
+            dataT2 = json.load(f)
 
-    with open(t2, 'r', encoding='utf-8') as f:
-        dataT2 = json.load(f)
+        predicted_data = []
+        records_groups = []
+        for i in range(len(dataT0)):
+            records_groups.append([dataT2[i], dataT1[i], dataT0[i]])
 
-    predicted_data = []
+        min_speed = 2
+        max_speed = 25
+        min_freeFlow = 2
+        max_freeFlow = 25
+        min_jamFactor = 2
+        max_jamFactor = 10
 
-    records_groups = []
-    for i in range(len(dataT0)):
-        records_groups.append([dataT2[i], dataT1[i], dataT0[i]])
+        scaling_params = (min_speed, max_speed, min_freeFlow, max_freeFlow, min_jamFactor, max_jamFactor)
 
-    min_speed = 2
-    max_speed = 25
-    min_freeFlow = 2
-    max_freeFlow = 25
-    min_jamFactor = 2
-    max_jamFactor = 10
+        model = build_model((3, 3))
 
-    scaling_params = (min_speed, max_speed, min_freeFlow, max_freeFlow, min_jamFactor, max_jamFactor)
+        with Pool(cpu_count()) as pool:
+            results = pool.map(process_group, [(group, model, scaling_params) for group in records_groups])
 
-    model = build_model((3, 3))
+        for result in results:
+            if result:
+                predicted_data.extend(result)
 
-    with Pool(cpu_count()) as pool:
-        results = pool.map(process_group, [(group, model, scaling_params) for group in records_groups])
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(predicted_data, f, ensure_ascii=False)
 
-    for result in results:
-        if result:
-            predicted_data.extend(result)
-
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(predicted_data, f, ensure_ascii=False)
-
-    print("Prediction results saved to", output_file)
+        print("Prediction results saved to", output_file)
+    
+    except Exception as e:
+        print(f"Error occurred: {e}")
+    
+    finally:
+        tf.keras.backend.clear_session()
+        print("Model session cleared and resources released.")
 
 if __name__ == '__main__':
     main()

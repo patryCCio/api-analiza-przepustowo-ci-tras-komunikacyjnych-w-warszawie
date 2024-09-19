@@ -1,12 +1,1244 @@
 import {
   getCoordsWithDistances,
   getDistanceFromLatLonInMeters,
-  getDistances,
+  getLOSClass,
   getOnlyDistances,
-  getStopsWithinRadius,
+  getRoadClass,
+  getSignalDensity,
+  getVCRatio,
   sortLines,
+  getLOSHoursPerDay,
+  calculateTimeDifference,
 } from "../functions.js";
 import { db } from "../config/db-config.js";
+
+export const getLineCapacity = async (req, res) => {
+  const { traceData } = req.body;
+  try {
+    const timeS = traceData.traces.routes[0].timetables.find(
+      (el) => el.order == 0
+    );
+    const timeE = traceData.traces.routes[0].timetables.find(
+      (el) => el.order == traceData.traces.routes[0].timetables.length - 1
+    );
+
+    const lengthTime = traceData.traces.routes[0].timetables.length;
+
+    const a = calculateTimeDifference(timeS.time, timeE.time);
+    const avg = parseInt(lengthTime) / parseInt(a.hours);
+
+    let actualHour = new Date().getHours();
+
+    actualHour = actualHour < 10 ? "0" + actualHour : actualHour;
+
+    let count = 0;
+
+    traceData.traces.routes[0].timetables.forEach((el) => {
+      const time = el.time.split(":")[0];
+
+      if (time == actualHour) {
+        count++;
+      }
+    });
+
+    let numberOfTrains = 1;
+
+    if (traceData.type == "Tramwaj") {
+      numberOfTrains = 2;
+    }
+
+    const cV = count * numberOfTrains * traceData.capacity;
+    const losHour = getLOSHoursPerDay(parseInt(a.hours));
+
+    let distance = 0;
+    let duration_osrm = 0;
+    let duration_timetable = 0;
+
+    traceData.traces.coords.distance.forEach((el) => {
+      distance += el.distance;
+      duration_osrm += el.duration;
+    });
+
+    traceData.traces.routes.forEach((el) => {
+      duration_timetable += el.timeFromPrev;
+    });
+
+    distance = Math.round(distance);
+
+    res.status(200).json({
+      routeInfo: {
+        duration_osrm,
+        duration_timetable,
+        distance,
+      },
+      times: {
+        start: timeS.time,
+        end: timeE.time,
+      },
+      cVeh: cV,
+      hourActivity: parseInt(a.hours),
+      averagePerHour: count,
+      averagePerDay: avg,
+      losHour: losHour,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json(err);
+  }
+};
+
+export const getTrafficAnalizeData = async (req, res) => {
+  const { analizeEl, labelArray, traceData } = req.body;
+
+  try {
+    const data_1_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.avgSpeed * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_1_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.avgSpeed * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_1_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.avgSpeed * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_2_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.avgConfidence * 100;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_2_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.avgConfidence * 100;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_2_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.avgConfidence * 100;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_3_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.avgJamFactor;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_3_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.avgJamFactor;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_3_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.avgJamFactor;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_4_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.avgFreeFlow * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_4_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.avgFreeFlow * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_4_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.avgFreeFlow * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_5_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.avgPopulationDensity;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_5_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.avgPopulationDensity;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_5_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.avgPopulationDensity;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_6_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.avgLanes;
+      it = parseFloat(it);
+      return it;
+    });
+    const data_6_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.avgLanes;
+      it = parseFloat(it);
+      return it;
+    });
+    const data_6_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.avgLanes;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_7_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.c;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_7_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.c;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_7_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.c;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_8_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.travelTimeWithDelays / 60;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_8_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.travelTimeWithDelays / 60;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_8_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.travelTimeWithDelays / 60;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_9_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.totalDelay / 60;
+      it = parseFloat(it.toFixed(0));
+      return it;
+    });
+    const data_9_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.totalDelay / 60;
+      it = parseFloat(it.toFixed(0));
+      return it;
+    });
+    const data_9_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.totalDelay / 60;
+      it = parseFloat(it.toFixed(0));
+      return it;
+    });
+
+    const data_10_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.finalSpeed * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_10_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.finalSpeed * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+    const data_10_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.finalSpeed * 3.6;
+      it = parseFloat(it.toFixed(2));
+      return it;
+    });
+
+    const data_11_0 = analizeEl.traces.results_0.map((el) => {
+      let it = el.cVehS;
+      it = parseFloat(it.toFixed(0));
+      return it;
+    });
+    const data_11_1 = analizeEl.traces.results_1.map((el) => {
+      let it = el.cVehS;
+      it = parseFloat(it.toFixed(0));
+      return it;
+    });
+    const data_11_2 = analizeEl.traces.results_2.map((el) => {
+      let it = el.cVehS;
+      it = parseFloat(it.toFixed(0));
+      return it;
+    });
+
+    let averageSpeed0 = 0;
+    let averageJamFactor0 = 0;
+    let averageFreeFlow0 = 0;
+    let averageFinalSpeed0 = 0;
+    let totalTimeWithDelay0 = 0;
+    let totalTimeWithoutDelay0 = 0;
+    let cVehS0 = 0;
+    let c0 = 0;
+
+    let averageSpeed1 = 0;
+    let averageJamFactor1 = 0;
+    let averageFreeFlow1 = 0;
+    let averageFinalSpeed1 = 0;
+    let totalTimeWithDelay1 = 0;
+    let totalTimeWithoutDelay1 = 0;
+    let cVehS1 = 0;
+    let c1 = 0;
+
+    let averageSpeed2 = 0;
+    let averageJamFactor2 = 0;
+    let averageFreeFlow2 = 0;
+    let averageFinalSpeed2 = 0;
+    let totalTimeWithDelay2 = 0;
+    let totalTimeWithoutDelay2 = 0;
+    let cVehS2 = 0;
+    let c2 = 0;
+
+    let total = 0;
+
+    let speed = 0;
+    let jamFactor = 0;
+    let freeFlow = 0;
+    let finalSpeed = 0;
+    let totalTimeWithDelay = 0;
+    let totalTimeWithoutDelay = 0;
+    let c = 0;
+    let cVehS = 0;
+
+    for (let x = 0; x < labelArray.length - 1; x++) {
+      const result0 = analizeEl.traces.results_0[x];
+      const result1 = analizeEl.traces.results_1[x];
+      const result2 = analizeEl.traces.results_2[x];
+
+      averageSpeed0 += result0.avgSpeed;
+      averageSpeed1 += result1.avgSpeed;
+      averageSpeed2 += result2.avgSpeed;
+
+      averageJamFactor0 += result0.avgJamFactor;
+      averageJamFactor1 += result1.avgJamFactor;
+      averageJamFactor2 += result2.avgJamFactor;
+
+      c0 += result0.c;
+      c1 += result1.c;
+      c2 += result2.c;
+
+      cVehS0 += result0.cVehS;
+      cVehS1 += result1.cVehS;
+      cVehS2 += result2.cVehS;
+
+      averageFreeFlow0 += result0.avgFreeFlow;
+      averageFreeFlow1 += result1.avgFreeFlow;
+      averageFreeFlow2 += result2.avgFreeFlow;
+
+      averageFinalSpeed0 += result0.finalSpeed;
+      averageFinalSpeed1 += result1.finalSpeed;
+      averageFinalSpeed2 += result2.finalSpeed;
+
+      totalTimeWithDelay0 += result0.travelTimeWithDelays;
+      totalTimeWithDelay1 += result1.travelTimeWithDelays;
+      totalTimeWithDelay2 += result2.travelTimeWithDelays;
+
+      totalTimeWithoutDelay0 += result0.travelTimeWithoutDelays;
+      totalTimeWithoutDelay1 += result1.travelTimeWithoutDelays;
+      totalTimeWithoutDelay2 += result2.travelTimeWithoutDelays;
+
+      let min = total / 60;
+
+      if (min < 15) {
+        total += result0.travelTimeWithDelays;
+
+        speed += result0.avgSpeed;
+        jamFactor += result0.avgJamFactor;
+        c += result0.c;
+        freeFlow += result0.avgFreeFlow;
+        finalSpeed += result0.finalSpeed;
+        totalTimeWithDelay += result0.travelTimeWithDelays;
+        totalTimeWithoutDelay += result0.travelTimeWithoutDelays;
+        cVehS += result0.cVehS;
+      } else if (min >= 15 && min < 30) {
+        total += result1.travelTimeWithDelays;
+
+        speed += result1.avgSpeed;
+        jamFactor += result1.avgJamFactor;
+        c += result1.c;
+        freeFlow += result1.avgFreeFlow;
+        finalSpeed += result1.finalSpeed;
+        totalTimeWithDelay += result1.travelTimeWithDelays;
+        totalTimeWithoutDelay += result1.travelTimeWithoutDelays;
+        cVehS += result1.cVehS;
+      } else {
+        total += result2.travelTimeWithDelays;
+
+        speed += result2.avgSpeed;
+        jamFactor += result2.avgJamFactor;
+        c += result2.c;
+        freeFlow += result2.avgFreeFlow;
+        finalSpeed += result2.finalSpeed;
+        totalTimeWithDelay += result2.travelTimeWithDelays;
+        totalTimeWithoutDelay += result2.travelTimeWithoutDelays;
+        cVehS += result2.cVehS;
+      }
+    }
+
+    const count = labelArray.length;
+
+    averageSpeed0 /= count;
+    averageJamFactor0 /= count;
+    averageFreeFlow0 /= count;
+    averageFinalSpeed0 /= count;
+    c0 /= count;
+    cVehS0 /= count;
+
+    averageSpeed1 /= count;
+    averageJamFactor1 /= count;
+    averageFreeFlow1 /= count;
+    averageFinalSpeed1 /= count;
+    c1 /= count;
+    cVehS1 /= count;
+
+    averageSpeed2 /= count;
+    averageJamFactor2 /= count;
+    averageFreeFlow2 /= count;
+    averageFinalSpeed2 /= count;
+    c2 /= count;
+    cVehS2 /= count;
+
+    speed /= count;
+    jamFactor /= count;
+    freeFlow /= count;
+    finalSpeed /= count;
+    c /= count;
+    cVehS /= count;
+
+    const roadClass0 = getRoadClass(averageFreeFlow0);
+    const roadClass1 = getRoadClass(averageFreeFlow1);
+    const roadClass2 = getRoadClass(averageFreeFlow2);
+    const roadClassFuture = getRoadClass(freeFlow);
+
+    const los0 = getLOSClass(roadClass0, averageFinalSpeed0);
+    const los1 = getLOSClass(roadClass1, averageFinalSpeed1);
+    const los2 = getLOSClass(roadClass2, averageFinalSpeed2);
+    const losFuture = getLOSClass(roadClassFuture, finalSpeed);
+
+    const districts = [];
+
+    traceData.traces.coords.coordinates.forEach((el) => {
+      let isIn = false;
+      districts.forEach((el2) => {
+        if (el.name == el2.name) {
+          isIn = true;
+        }
+      });
+
+      if (!isIn) {
+        districts.push({
+          name: el.name,
+          population_density: el.population_density,
+          area: el.area,
+        });
+      }
+    });
+
+    const d = [];
+    const de = [];
+
+    districts.forEach((el) => {
+      let count = 0;
+      traceData.traces.coords.distance.forEach((el2) => {
+        if (el.name == el2.name) {
+          count++;
+        }
+      });
+
+      d.push({
+        ...el,
+        count,
+      });
+    });
+
+    let total2 = 0;
+    let total3 = 0;
+
+    d.forEach((el) => {
+      let aspeed = 0;
+      let ajamFactor = 0;
+      let afreeFlow = 0;
+      let afinalSpeed = 0;
+      let atotalTimeWithDelay = 0;
+      let atotalTimeWithoutDelay = 0;
+      let ac = 0;
+      let aCvehS = 0;
+
+      for (let x = total2; x < total2 + el.count; x++) {
+        let min = total3 / 60;
+        let obj = {};
+        if (min < 15) {
+          obj = analizeEl.traces.results_0[x];
+        } else if (min >= 15 && min < 30) {
+          obj = analizeEl.traces.results_1[x];
+        } else if (min >= 30) {
+          obj = analizeEl.traces.results_2[x];
+        }
+
+        total3 += obj.travelTimeWithDelays;
+
+        aspeed += obj.avgSpeed;
+        ajamFactor += obj.avgJamFactor;
+        ac += obj.c;
+        afreeFlow += obj.avgFreeFlow;
+        afinalSpeed += obj.finalSpeed;
+        atotalTimeWithDelay += obj.travelTimeWithDelays;
+        atotalTimeWithoutDelay += obj.travelTimeWithoutDelays;
+        aCvehS += obj.cVehS;
+      }
+      total2 += el.count;
+
+      aspeed /= el.count;
+      ajamFactor /= el.count;
+      ac /= el.count;
+      afreeFlow /= el.count;
+      afinalSpeed /= el.count;
+      atotalTimeWithDelay /= el.count;
+      atotalTimeWithoutDelay /= el.count;
+      aCvehS /= el.count;
+
+      const road_class = getRoadClass(afreeFlow);
+      const los = getLOSClass(road_class, afinalSpeed);
+
+      de.push({
+        ...el,
+        speed: aspeed,
+        jamFactor: ajamFactor,
+        c: ac,
+        cVehS: aCvehS.toFixed(0),
+        freeFlow: afreeFlow,
+        finalSpeed: afinalSpeed,
+        travelTimeWithDelays: atotalTimeWithDelay,
+        travelTimeWithoutDelays: atotalTimeWithoutDelay,
+        los: los,
+      });
+    });
+
+    const data1 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_1_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_1_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_1_2 }],
+      },
+    };
+    const data2 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_2_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_2_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_2_2 }],
+      },
+    };
+
+    const data3 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_3_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_3_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_3_2 }],
+      },
+    };
+
+    const data4 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_4_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_4_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_4_2 }],
+      },
+    };
+
+    const data5 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_5_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_5_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_5_2 }],
+      },
+    };
+
+    const data6 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_6_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_6_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_6_2 }],
+      },
+    };
+
+    const data7 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_7_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_7_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_7_2 }],
+      },
+    };
+
+    const data8 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_8_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_8_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_8_2 }],
+      },
+    };
+
+    const data9 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_9_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_9_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_9_2 }],
+      },
+    };
+
+    const data10 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_10_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_10_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_10_2 }],
+      },
+    };
+
+    const data11 = {
+      data_0: {
+        labels: labelArray,
+        datasets: [{ data: data_11_0 }],
+      },
+      data_1: {
+        labels: labelArray,
+        datasets: [{ data: data_11_1 }],
+      },
+      data_2: {
+        labels: labelArray,
+        datasets: [{ data: data_11_2 }],
+      },
+    };
+
+    res.status(200).json({
+      values: {
+        time_0: {
+          speed: averageSpeed0,
+          freeFlow: averageFreeFlow0,
+          jamFactor: averageJamFactor0,
+          finalSpeed: averageFinalSpeed0,
+          travelTimeWithDelays: totalTimeWithDelay0,
+          travelTimeWithoutDelays: totalTimeWithoutDelay0,
+          c: c0,
+          cVehS: cVehS0,
+          los: los0,
+        },
+        time_1: {
+          speed: averageSpeed1,
+          freeFlow: averageFreeFlow1,
+          jamFactor: averageJamFactor1,
+          finalSpeed: averageFinalSpeed1,
+          travelTimeWithDelays: totalTimeWithDelay1,
+          travelTimeWithoutDelays: totalTimeWithoutDelay1,
+          c: c1,
+          cVehS: cVehS1,
+          los: los1,
+        },
+        time_2: {
+          speed: averageSpeed2,
+          freeFlow: averageFreeFlow2,
+          jamFactor: averageJamFactor2,
+          finalSpeed: averageFinalSpeed2,
+          travelTimeWithDelays: totalTimeWithDelay2,
+          travelTimeWithoutDelays: totalTimeWithoutDelay2,
+          c: c2,
+          cVehS: cVehS2,
+          los: los2,
+        },
+        future: {
+          speed: speed,
+          freeFlow: freeFlow,
+          jamFactor: jamFactor,
+          finalSpeed: finalSpeed,
+          travelTimeWithDelays: totalTimeWithDelay,
+          travelTimeWithoutDelays: totalTimeWithoutDelay,
+          c: c,
+          cVehS: cVehS.toFixed(0),
+          los: losFuture,
+        },
+        districts: de,
+      },
+      data: {
+        data1,
+        data2,
+        data3,
+        data4,
+        data5,
+        data6,
+        data7,
+        data8,
+        data9,
+        data10,
+        data11,
+      },
+    });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+};
+
+export const getTrafficFlowForTraces = async (req, res) => {
+  const { vehicles } = req.body;
+  try {
+    const vehiclesArray = [];
+
+    const query = "SELECT * FROM traffic_flow WHERE order_time IN (0, 1, 2)";
+    const [traffic_flow] = await db.query(query);
+
+    const accidents = traffic_flow.filter(
+      (el) => el.traversability == "closed" && el.order_time == 0
+    );
+    const partials = traffic_flow.filter(
+      (el) => el.traversability == "partial" && el.order_time == 0
+    );
+    const anomalies = traffic_flow.filter(
+      (el) => el.is_anomaly == 1 && el.order_time == 0
+    );
+
+    const distanceThreshold = 300;
+
+    const removeDuplicates = (points) => {
+      return points.reduce((acc, current) => {
+        const isDuplicate = acc.some((point) => {
+          return (
+            getDistanceFromLatLonInMeters(
+              point.latitude,
+              point.longitude,
+              current.latitude,
+              current.longitude
+            ) < distanceThreshold
+          );
+        });
+
+        if (!isDuplicate) {
+          acc.push(current);
+        }
+
+        return acc;
+      }, []);
+    };
+
+    const uniqueAccidents = removeDuplicates(accidents);
+    const uniqueAnomalies = removeDuplicates(anomalies);
+    const uniquePartials = removeDuplicates(partials);
+
+    for (const el of vehicles) {
+      if (el.is_active && el.traces) {
+        for (const el2 of el.traces) {
+          if (el2.is_active && el2.coords) {
+            vehiclesArray.push({
+              route: el.route,
+              capacity: el.capacity,
+              ...el2,
+              vehicle_id: el.id,
+              trace_id: el2.id,
+            });
+          }
+        }
+      }
+    }
+
+    const maxDistance = 200;
+
+    const array = vehiclesArray.map((el) => {
+      const coords_0 = [];
+      const coords_1 = [];
+      const coords_2 = [];
+
+      el.coords.coordinates.forEach((coord) => {
+        let closestFlow_0 = null;
+        let closestFlow_1 = null;
+        let closestFlow_2 = null;
+
+        let minDistance_0 = Infinity;
+        let minDistance_1 = Infinity;
+        let minDistance_2 = Infinity;
+
+        traffic_flow.forEach((flow) => {
+          const distance = getDistanceFromLatLonInMeters(
+            coord.latitude,
+            coord.longitude,
+            flow.latitude,
+            flow.longitude
+          );
+
+          if (flow.order_time === 0 && distance < minDistance_0) {
+            minDistance_0 = distance;
+            closestFlow_0 = flow;
+          } else if (flow.order_time === 1 && distance < minDistance_1) {
+            minDistance_1 = distance;
+            closestFlow_1 = flow;
+          } else if (flow.order_time === 2 && distance < minDistance_2) {
+            minDistance_2 = distance;
+            closestFlow_2 = flow;
+          }
+        });
+
+        coords_0.push(
+          minDistance_0 > maxDistance
+            ? { ...closestFlow_0, ...coord, speed: null }
+            : { ...closestFlow_0, ...coord }
+        );
+
+        coords_1.push(
+          minDistance_1 > maxDistance
+            ? { ...closestFlow_1, ...coord, speed: null }
+            : { ...closestFlow_1, ...coord }
+        );
+
+        coords_2.push(
+          minDistance_2 > maxDistance
+            ? { ...closestFlow_2, ...coord, speed: null }
+            : { ...closestFlow_2, ...coord }
+        );
+      });
+
+      return {
+        ...el,
+        coords_0: {
+          distance: el.coords.distance,
+          coordinates: coords_0,
+        },
+        coords_1: {
+          distance: el.coords.distance,
+          coordinates: coords_1,
+        },
+        coords_2: {
+          distance: el.coords.distance,
+          coordinates: coords_2,
+        },
+      };
+    });
+
+    res.status(200).json({
+      vehicles: array,
+      accidents: uniqueAccidents,
+      anomalies: uniqueAnomalies,
+      partials: uniquePartials,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json(err);
+  }
+};
+
+const checkTags = (tags) => {
+  if (tags == null) {
+    return {
+      maxspeed: 50,
+      lanes: 1,
+      name: "Nieznana",
+      laneWidth: 3,
+    };
+  } else {
+    let toReturn = {
+      maxspeed: 50,
+      lanes: 1,
+      name: "Nieznana",
+      laneWidth: 3,
+    };
+
+    if (tags.maxspeed != null) {
+      toReturn.maxspeed = tags.maxspeed;
+    }
+
+    if (tags["lanes:forward"] != null) {
+      toReturn.lanes = tags["lanes:forward"];
+    } else {
+      if (tags.lanes != null) {
+        toReturn.lanes = tags.lanes;
+      }
+    }
+
+    if (tags.laneWidth != null) {
+      toReturn.laneWidth = tags.laneWidth;
+    }
+
+    if (tags.name != null) {
+      toReturn.name = tags.name;
+    }
+
+    return toReturn;
+  }
+};
+
+export const calculateDelayForStops = (el, type, stops) => {
+  const totalpassengerInBusPerDay = 1238961;
+  const totalpassengerInTramPerDay = 681928;
+  const totalPassengersPerDay =
+    totalpassengerInBusPerDay + totalpassengerInTramPerDay;
+  const percentageOfTram = totalpassengerInTramPerDay / totalPassengersPerDay;
+  const percentageOfBus = totalpassengerInBusPerDay / totalPassengersPerDay;
+
+  let tramStops = 0;
+  let busStops = 0;
+
+  for (const it of stops) {
+    if (it.type == "Tramwajowy") {
+      if (it.district_name == el.name) {
+        tramStops++;
+      }
+    } else {
+      if (it.district_name == el.name) {
+        busStops++;
+      }
+    }
+  }
+
+  let population = 0;
+
+  if (type == "Tramwaj") {
+    population = parseInt(
+      (el.population_density * el.area * 0.65 * percentageOfTram) / 24
+    );
+  } else {
+    population = parseInt(
+      (el.population_density * el.area * 0.65 * percentageOfBus) / 24
+    );
+  }
+
+  const crowdingFactor = getPassengerFlowFactor();
+
+  if (type == "Tramwaj") {
+    population = population / tramStops;
+  } else {
+    population = population / busStops;
+  }
+
+  population = (population * crowdingFactor) / 4;
+
+  const boardingTimePerPassenger = 3; 
+  const alightingTimePerPassenger = 2;
+  const stopTime = 5; 
+
+  const passengersBoarding = Math.floor(population * 0.5);
+  const passengersAlighting = Math.floor(population * 0.5);
+
+  const totalDelay =
+    passengersBoarding * boardingTimePerPassenger +
+    passengersAlighting * alightingTimePerPassenger +
+    stopTime;
+
+  return totalDelay;
+};
+
+export const getPassengerFlowFactor = () => {
+  const hour = new Date().getHours();
+
+  if (hour >= 6 && hour < 9) {
+    return 1.2; // Poranny szczyt
+  } else if (hour >= 9 && hour < 15) {
+    return 0.6; // Środek dnia
+  } else if (hour >= 15 && hour < 18) {
+    return 1.5; // Popołudniowy szczyt
+  } else if (hour >= 18 && hour < 21) {
+    return 0.7; // Wieczór
+  } else {
+    return 0.3; // Noc, minimalny ruch
+  }
+};
+
+const getCapacity = async (arr, traceData, choice, stops) => {
+  const newValues = [];
+  for (let x = 1; x < arr.length; x++) {
+    const end = arr[x].order;
+    const start = arr[x - 1].order;
+
+    let avgSpeed = 0;
+    let avgSpeedUncapped = 0;
+    let avgFreeFlow = 0;
+    let avgConfidence = 0;
+    let avgJamFactor = 0;
+    let avgPopulationDensity = 0;
+    let count = 0;
+
+    let is_anomaly = 0;
+    let anomaly = 0;
+
+    let avgLanes = 0;
+    let avgMaxSpeed = 0;
+    let avgLaneWidth = 0;
+
+    let i = 0;
+
+    let coords;
+
+    if (choice == 0) {
+      coords = traceData.traces.coords_0.coordinates;
+    } else if (choice == 1) {
+      coords = traceData.traces.coords_1.coordinates;
+    } else if (choice == 2) {
+      coords = traceData.traces.coords_2.coordinates;
+    }
+
+    for (const el of coords) {
+      if (el.order >= start && el.order <= end) {
+        count++;
+
+        avgSpeed += el.speed || 10;
+        avgSpeedUncapped += el.speedUncapped;
+        avgConfidence += el.confidence || 0.5;
+        avgJamFactor += el.jamFactor || 3;
+        avgFreeFlow += el.freeFlow || 10;
+        avgPopulationDensity += el.population_density;
+        if (el.is_anomaly) {
+          anomaly++;
+        }
+        const tags = checkTags(el.tags);
+        avgMaxSpeed += parseInt(tags.maxspeed, 10) || 13;
+
+        if (traceData.type == "Autobus") {
+          avgLanes += parseFloat(tags.lanes, 10) || 1;
+        } else {
+          avgLanes += 1;
+        }
+
+        avgLaneWidth += parseFloat(tags.laneWidth) || 3;
+        i++;
+      }
+    }
+
+    const distance = traceData.traces.coords_0.distance[x - 1].distance;
+    avgSpeed /= count;
+    avgSpeedUncapped /= count;
+    avgConfidence /= count;
+    avgJamFactor /= count;
+    avgFreeFlow /= count;
+    avgPopulationDensity /= count;
+    avgLanes /= count;
+    avgMaxSpeed /= count;
+    avgLaneWidth /= count;
+
+    if (avgSpeed > avgMaxSpeed) {
+      avgSpeed = avgMaxSpeed;
+    }
+
+    if (avgFreeFlow > avgMaxSpeed) {
+      avgFreeFlow = avgMaxSpeed;
+    }
+
+    if (anomaly > count / 2) {
+      is_anomaly = 1;
+    }
+
+    const road_class = getRoadClass(avgFreeFlow);
+    const signalDensity = getSignalDensity(road_class);
+    const los = getLOSClass(road_class, avgSpeed);
+    const X = getVCRatio(road_class, avgSpeed, signalDensity);
+
+    let distances = traceData.traces.coords_0.distance[x - 1];
+
+    let d2 = 0;
+
+    if (distances != null) {
+      d2 = calculateDelayForStops(distances, traceData.type, stops);
+    }
+
+    let g = 35;
+    let C = 90;
+
+    const S = 1900;
+    const N = avgLanes;
+
+    const gC = g / C;
+
+    let L = 0;
+
+    if (traceData.type == "Autobus") {
+      if (traceData.capacity == 50) {
+        L = 13.5;
+      } else if (traceData.capacity == 80) {
+        L = 15;
+      } else {
+        L = 18.75;
+      }
+    } else {
+      L = 30 * 2;
+    }
+
+    let h = 0;
+    let safetyDistance = 3;
+    if (traceData.type == "Autobus") {
+      safetyDistance = 3;
+    } else {
+      safetyDistance = 10;
+    }
+
+    h = (L + safetyDistance) / avgSpeed;
+    const Sveh = 3600 / h;
+
+    const cVehS = Sveh * gC * N;
+
+    let d = (0.5 * C * Math.pow(1 - gC, 2)) / (1 - X * gC); // s
+
+    const cLane = S * gC;
+    const c = cLane * N;
+
+    const number_of_signals = signalDensity * (distance / 1000);
+    let totalDelay = number_of_signals * d;
+
+    totalDelay = parseInt(totalDelay + d2);
+
+    const travelTimeWithoutDelays = distance / avgSpeed;
+
+    const travelTimeWithDelays = travelTimeWithoutDelays + totalDelay;
+    const finalSpeed = distance / travelTimeWithDelays;
+
+    newValues.push({
+      avgSpeed,
+      avgSpeedUncapped,
+      avgConfidence,
+      avgJamFactor,
+      avgFreeFlow,
+      avgPopulationDensity,
+      avgLanes,
+      avgMaxSpeed,
+      avgLaneWidth,
+      is_anomaly,
+      road_class,
+      signalDensity,
+      los,
+      X,
+      gC,
+      d,
+      totalDelay,
+      travelTimeWithoutDelays,
+      travelTimeWithDelays,
+      finalSpeed,
+      number_of_signals,
+      S,
+      N,
+      c,
+      distance,
+      cVehS,
+    });
+  }
+  return newValues;
+};
+
+export const getTrafficFlow = async (req, res) => {
+  const { traceData, stops } = req.body;
+
+  let arr = [];
+  const tt = traceData.traces.routes;
+
+  tt.forEach((el) => {
+    let index = 0;
+    let order = 0;
+    let minDistance = Infinity;
+
+    traceData.traces.coords_0.coordinates.forEach((el2, indexx) => {
+      let lon1 = el.longitude;
+      let lat1 = el.latitude;
+
+      let lon2 = el2.longitude;
+      let lat2 = el2.latitude;
+
+      let dLon = Math.abs(lon1 - lon2);
+      let dLat = Math.abs(lat1 - lat2);
+
+      let distance = dLon + dLat;
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        index = indexx;
+        order = el2.order;
+      }
+    });
+
+    arr.push({ order, index });
+  });
+
+  const results_0 = await getCapacity(arr, traceData, 0, stops);
+  const results_1 = await getCapacity(arr, traceData, 1, stops);
+  const results_2 = await getCapacity(arr, traceData, 2, stops);
+  const object = {
+    ...traceData,
+    traces: {
+      ...traceData.traces,
+      results_0,
+      results_1,
+      results_2,
+    },
+  };
+
+  res.status(200).json(object);
+};
+
+// tych jeszcze nie ma V
 
 export const getDistancesInDistricts = async (req, res) => {
   const { traceData } = req.body;
@@ -228,748 +1460,7 @@ export const getDistancesBetweenStops = async (req, res) => {
   }
 };
 
-export const getTrafficFlowForTraces = async (req, res) => {
-  const { vehicles } = req.body;
-
-  try {
-    const vehiclesArray = [];
-
-    const query = "SELECT * FROM traffic_flow WHERE order_time IN (0, 1, 2)";
-    const [traffic_flow] = await db.query(query);
-
-    const accidents = traffic_flow.filter(
-      (el) => el.traversability == "closed" && el.order_time == 0
-    );
-    const partials = traffic_flow.filter(
-      (el) => el.traversability == "partial" && el.order_time == 0
-    );
-    const anomalies = traffic_flow.filter(
-      (el) => el.is_anomaly == 1 && el.order_time == 0
-    );
-
-    const distanceThreshold = 300;
-
-    const removeDuplicates = (points) => {
-      return points.reduce((acc, current) => {
-        const isDuplicate = acc.some((point) => {
-          return (
-            getDistanceFromLatLonInMeters(
-              point.latitude,
-              point.longitude,
-              current.latitude,
-              current.longitude
-            ) < distanceThreshold
-          );
-        });
-
-        if (!isDuplicate) {
-          acc.push(current);
-        }
-
-        return acc;
-      }, []);
-    };
-
-    const uniqueAccidents = removeDuplicates(accidents);
-    const uniqueAnomalies = removeDuplicates(anomalies);
-    const uniquePartials = removeDuplicates(partials);
-
-    for (const el of vehicles) {
-      if (el.is_active && el.traces) {
-        for (const el2 of el.traces) {
-          if (el2.is_active && el2.coords) {
-            vehiclesArray.push({
-              route: el.route,
-              capacity: el.capacity,
-              ...el2,
-              vehicle_id: el.id,
-              trace_id: el2.id,
-            });
-          }
-        }
-      }
-    }
-
-    const maxDistance = 200;
-
-    const array = vehiclesArray.map((el) => {
-      const coords_0 = [];
-      const coords_1 = [];
-      const coords_2 = [];
-
-      el.coords.coordinates.forEach((coord) => {
-        let closestFlow_0 = null;
-        let closestFlow_1 = null;
-        let closestFlow_2 = null;
-
-        let minDistance_0 = Infinity;
-        let minDistance_1 = Infinity;
-        let minDistance_2 = Infinity;
-
-        traffic_flow.forEach((flow) => {
-          const distance = getDistanceFromLatLonInMeters(
-            coord.latitude,
-            coord.longitude,
-            flow.latitude,
-            flow.longitude
-          );
-
-          if (flow.order_time === 0 && distance < minDistance_0) {
-            minDistance_0 = distance;
-            closestFlow_0 = flow;
-          } else if (flow.order_time === 1 && distance < minDistance_1) {
-            minDistance_1 = distance;
-            closestFlow_1 = flow;
-          } else if (flow.order_time === 2 && distance < minDistance_2) {
-            minDistance_2 = distance;
-            closestFlow_2 = flow;
-          }
-        });
-
-        coords_0.push(
-          minDistance_0 > maxDistance
-            ? { ...closestFlow_0, ...coord, speed: null }
-            : { ...closestFlow_0, ...coord }
-        );
-
-        coords_1.push(
-          minDistance_1 > maxDistance
-            ? { ...closestFlow_1, ...coord, speed: null }
-            : { ...closestFlow_1, ...coord }
-        );
-
-        coords_2.push(
-          minDistance_2 > maxDistance
-            ? { ...closestFlow_2, ...coord, speed: null }
-            : { ...closestFlow_2, ...coord }
-        );
-      });
-
-      return {
-        ...el,
-        coords_0: {
-          distance: el.coords.distance,
-          coordinates: coords_0,
-        },
-        coords_1: {
-          distance: el.coords.distance,
-          coordinates: coords_1,
-        },
-        coords_2: {
-          distance: el.coords.distance,
-          coordinates: coords_2,
-        },
-      };
-    });
-
-    res.status(200).json({
-      vehicles: array,
-      accidents: uniqueAccidents,
-      anomalies: uniqueAnomalies,
-      partials: uniquePartials,
-    });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json(err);
-  }
-};
-
-const getSignalDensity = (road_class) => {
-  // exhibit 10-6
-
-  switch (road_class) {
-    case "I":
-      return 0.5;
-    case "II":
-      return 2;
-    case "III":
-      return 4;
-    case "IV":
-      return 6;
-  }
-};
-
-const checkTags = (tags) => {
-  if (tags == null) {
-    return {
-      maxspeed: 50,
-      lanes: 1,
-      name: "Nieznana",
-      laneWidth: 3,
-    };
-  } else {
-    let toReturn = {
-      maxspeed: 50,
-      lanes: 1,
-      name: "Nieznana",
-      laneWidth: 3,
-    };
-
-    if (tags.maxspeed != null) {
-      toReturn.maxspeed = tags.maxspeed;
-    }
-
-    if (tags["lanes:forward"] != null) {
-      toReturn.lanes = tags["lanes:forward"];
-    } else {
-      if (tags.lanes != null) {
-        toReturn.lanes = tags.lanes;
-      }
-    }
-
-    if (tags.laneWidth != null) {
-      toReturn.laneWidth = tags.laneWidth;
-    }
-
-    if (tags.name != null) {
-      toReturn.name = tags.name;
-    }
-
-    return toReturn;
-  }
-};
-
-// exhibit 10-5
-const getRoadClass = (freeFlow) => {
-  const kmh = freeFlow * 3.6;
-
-  if (kmh >= 80) return "I";
-  if (kmh >= 65) return "II";
-  if (kmh >= 55) return "III";
-
-  return "IV";
-};
-
-//exhibit 15-8 -> 15-11
-const getVCRatio = (road_class, travelSpeed, signalDensity) => {
-  const kmh = travelSpeed * 3.6; // konwersja prędkości z m/s na km/h
-
-  switch (road_class) {
-    case "I":
-      if (signalDensity === 0.5) {
-        if (kmh >= 70) return 0.0;
-        if (kmh >= 60 && kmh < 70) return 0.2;
-        if (kmh >= 50 && kmh < 60) return 0.4;
-        if (kmh >= 40 && kmh < 50) return 0.6;
-        if (kmh < 40) return 0.8;
-      } else if (signalDensity === 1) {
-        if (kmh >= 60) return 0.0;
-        if (kmh >= 50 && kmh < 60) return 0.2;
-        if (kmh >= 40 && kmh < 50) return 0.4;
-        if (kmh >= 30 && kmh < 40) return 0.6;
-        if (kmh < 30) return 0.8;
-      } else if (signalDensity === 2) {
-        if (kmh >= 50) return 0.0;
-        if (kmh >= 40 && kmh < 50) return 0.2;
-        if (kmh >= 30 && kmh < 40) return 0.4;
-        if (kmh >= 20 && kmh < 30) return 0.6;
-        if (kmh < 20) return 0.8;
-      }
-      break;
-
-    case "II":
-      if (signalDensity === 0.5) {
-        if (kmh >= 60) return 0.0;
-        if (kmh >= 50 && kmh < 60) return 0.2;
-        if (kmh >= 40 && kmh < 50) return 0.4;
-        if (kmh >= 30 && kmh < 40) return 0.6;
-        if (kmh < 30) return 0.8;
-      } else if (signalDensity === 1) {
-        if (kmh >= 50) return 0.0;
-        if (kmh >= 40 && kmh < 50) return 0.2;
-        if (kmh >= 30 && kmh < 40) return 0.4;
-        if (kmh >= 20 && kmh < 30) return 0.6;
-        if (kmh < 20) return 0.8;
-      } else if (signalDensity === 2) {
-        if (kmh >= 40) return 0.0;
-        if (kmh >= 30 && kmh < 40) return 0.2;
-        if (kmh >= 20 && kmh < 30) return 0.4;
-        if (kmh >= 15 && kmh < 20) return 0.6;
-        if (kmh < 15) return 0.8;
-      }
-      break;
-
-    case "III":
-      if (signalDensity === 2) {
-        if (kmh >= 40) return 0.0;
-        if (kmh >= 30 && kmh < 40) return 0.2;
-        if (kmh >= 25 && kmh < 30) return 0.4;
-        if (kmh >= 20 && kmh < 25) return 0.6;
-        if (kmh < 20) return 0.8;
-      } else if (signalDensity === 3) {
-        if (kmh >= 35) return 0.0;
-        if (kmh >= 28 && kmh < 35) return 0.2;
-        if (kmh >= 20 && kmh < 28) return 0.4;
-        if (kmh >= 15 && kmh < 20) return 0.6;
-        if (kmh < 15) return 0.8;
-      } else if (signalDensity === 4) {
-        if (kmh >= 30) return 0.0;
-        if (kmh >= 25 && kmh < 30) return 0.2;
-        if (kmh >= 18 && kmh < 25) return 0.4;
-        if (kmh >= 12 && kmh < 18) return 0.6;
-        if (kmh < 12) return 0.8;
-      }
-      break;
-
-    case "IV":
-      if (signalDensity === 4) {
-        if (kmh >= 25) return 0.0;
-        if (kmh >= 20 && kmh < 25) return 0.2;
-        if (kmh >= 15 && kmh < 20) return 0.4;
-        if (kmh >= 10 && kmh < 15) return 0.6;
-        if (kmh < 10) return 0.8;
-      } else if (signalDensity === 5) {
-        if (kmh >= 20) return 0.0;
-        if (kmh >= 15 && kmh < 20) return 0.2;
-        if (kmh >= 10 && kmh < 15) return 0.4;
-        if (kmh >= 8 && kmh < 10) return 0.6;
-        if (kmh < 8) return 0.8;
-      } else if (signalDensity === 6) {
-        if (kmh >= 18) return 0.0;
-        if (kmh >= 12 && kmh < 18) return 0.2;
-        if (kmh >= 8 && kmh < 12) return 0.4;
-        if (kmh >= 5 && kmh < 8) return 0.6;
-        if (kmh < 5) return 0.8;
-      }
-      break;
-
-    default:
-      return null;
-  }
-};
-
-// Funkcja obliczająca kąt między dwoma wektorami i określająca kierunek zakrętu
-const getAngleBetweenVectors = (p1, p2, p3) => {
-  const vector1 = {
-    x: p2.longitude - p1.longitude,
-    y: p2.latitude - p1.latitude,
-  };
-
-  const vector2 = {
-    x: p3.longitude - p2.longitude,
-    y: p3.latitude - p2.latitude,
-  };
-
-  const dotProduct = vector1.x * vector2.x + vector1.y * vector2.y;
-  const magnitude1 = Math.sqrt(vector1.x * vector1.x + vector1.y * vector1.y);
-  const magnitude2 = Math.sqrt(vector2.x * vector2.x + vector2.y * vector2.y);
-
-  const cosineAngle = dotProduct / (magnitude1 * magnitude2);
-  const angle = Math.acos(cosineAngle) * (180 / Math.PI); // Kąt w stopniach
-
-  return angle;
-};
-
-const checkTurnDirection = (p1, p2, p3) => {
-  const angle = getAngleBetweenVectors(p1, p2, p3);
-
-  if (angle >= 45) {
-    const crossProduct =
-      (p2.longitude - p1.longitude) * (p3.latitude - p2.latitude) -
-      (p2.latitude - p1.latitude) * (p3.longitude - p2.longitude);
-
-    if (crossProduct > 0) {
-      return "left";
-    } else if (crossProduct < 0) {
-      return "right";
-    }
-  }
-
-  return "straight";
-};
-
-// exhibit 15-2
-const getLOSClass = (road_class, avgSpeed) => {
-  const kmh = avgSpeed * 3.6;
-  switch (road_class) {
-    case "I":
-      if (kmh <= 26) {
-        return "F";
-      } else if (kmh > 26 && kmh <= 32) {
-        return "E";
-      } else if (kmh > 32 && kmh <= 40) {
-        return "D";
-      } else if (kmh > 40 && kmh <= 56) {
-        return "C";
-      } else if (kmh > 56 && kmh <= 72) {
-        return "B";
-      } else {
-        return "A";
-      }
-
-    case "II":
-      if (kmh <= 21) {
-        return "F";
-      } else if (kmh > 21 && kmh <= 26) {
-        return "E";
-      } else if (kmh > 26 && kmh <= 33) {
-        return "D";
-      } else if (kmh > 33 && kmh <= 46) {
-        return "C";
-      } else if (kmh > 46 && kmh <= 59) {
-        return "B";
-      } else {
-        return "A";
-      }
-
-    case "III":
-      if (kmh <= 17) {
-        return "F";
-      } else if (kmh > 17 && kmh <= 22) {
-        return "E";
-      } else if (kmh > 22 && kmh <= 28) {
-        return "D";
-      } else if (kmh > 28 && kmh <= 39) {
-        return "C";
-      } else if (kmh > 39 && kmh <= 50) {
-        return "B";
-      } else {
-        return "A";
-      }
-
-    case "IV":
-      if (kmh <= 14) {
-        return "F";
-      } else if (kmh > 14 && kmh <= 18) {
-        return "E";
-      } else if (kmh > 18 && kmh <= 23) {
-        return "D";
-      } else if (kmh > 23 && kmh <= 32) {
-        return "C";
-      } else if (kmh > 32 && kmh <= 41) {
-        return "B";
-      } else {
-        return "A";
-      }
-  }
-};
-
-const getCapacity = async (arr, traceData, choice) => {
-  const newValues = [];
-  for (let x = 1; x < arr.length; x++) {
-    const end = arr[x].order;
-    const start = arr[x - 1].order;
-
-    let avgSpeed = 0;
-    let avgSpeedUncapped = 0;
-    let avgFreeFlow = 0;
-    let avgConfidence = 0;
-    let avgJamFactor = 0;
-    let avgPopulationDensity = 0;
-    let count = 0;
-
-    let is_anomaly = 0;
-    let anomaly = 0;
-
-    let avgLanes = 0;
-    let avgMaxSpeed = 0;
-    let avgLaneWidth = 0;
-
-    let i = 0;
-
-    let coords;
-
-    if (choice == 0) {
-      coords = traceData.traces.coords_0.coordinates;
-    } else if (choice == 1) {
-      coords = traceData.traces.coords_1.coordinates;
-    } else if (choice == 2) {
-      coords = traceData.traces.coords_2.coordinates;
-    }
-
-    for (const el of coords) {
-      if (el.order >= start && el.order <= end) {
-        count++;
-
-        avgSpeed += el.speed || 10;
-        avgSpeedUncapped += el.speedUncapped;
-        avgConfidence += el.confidence || 0.5;
-        avgJamFactor += el.jamFactor || 3;
-        avgFreeFlow += el.freeFlow || 10;
-        avgPopulationDensity += el.population_density;
-        if (el.is_anomaly) {
-          anomaly++;
-        }
-        const tags = checkTags(el.tags);
-        avgMaxSpeed += parseInt(tags.maxspeed, 10) || 13;
-
-        if (traceData.type == "Autobus") {
-          avgLanes += parseFloat(tags.lanes, 10) || 1;
-        } else {
-          avgLanes += 1;
-        }
-
-        avgLaneWidth += parseFloat(tags.laneWidth) || 3;
-        i++;
-      }
-    }
-
-    const direction = arr[x - 1].direction;
-
-    const distance = traceData.traces.coords_0.distance[x - 1].distance;
-    avgSpeed /= count;
-    avgSpeedUncapped /= count;
-    avgConfidence /= count;
-    avgJamFactor /= count;
-    avgFreeFlow /= count;
-    avgPopulationDensity /= count;
-    avgLanes /= count;
-    avgMaxSpeed /= count;
-    avgLaneWidth /= count;
-
-    if (avgSpeed > avgMaxSpeed) {
-      avgSpeed = avgMaxSpeed;
-    }
-
-    if (avgFreeFlow > avgMaxSpeed) {
-      avgFreeFlow = avgMaxSpeed;
-    }
-
-    if (anomaly > count / 2) {
-      is_anomaly = 1;
-    }
-
-    const road_class = getRoadClass(avgFreeFlow);
-    const signalDensity = getSignalDensity(road_class);
-    const los = getLOSClass(road_class, avgSpeed);
-    const X = getVCRatio(road_class, avgSpeed, signalDensity);
-
-    const g = 35; //sek
-    const C = 90; //sek
-
-    const tc = 33;
-
-    const gC = g / C;
-
-    const d =
-      (C * Math.pow(1 - gC, 2)) / (2 * (1 - X * gC)) +
-      (Math.pow(X, 2) / (2 * (1 - X))) * tc; // s
-
-    const number_of_signals = signalDensity * (distance / 1000);
-
-    const totalDelay = number_of_signals * d + 15; //s, +15 oznacza postój na przystanku
-
-    const travelTimeWithoutDelays = distance / avgSpeed; //m / m/s
-
-    const travelTimeWithDelays = travelTimeWithoutDelays + totalDelay; //s
-
-    const finalSpeed = distance / travelTimeWithDelays; // m/s
-
-    const S = 1900;
-    const N = avgLanes;
-
-    const c = S * gC * N;
-
-    newValues.push({
-      avgSpeed,
-      avgSpeedUncapped,
-      avgConfidence,
-      avgJamFactor,
-      avgFreeFlow,
-      avgPopulationDensity,
-      avgLanes,
-      avgMaxSpeed,
-      avgLaneWidth,
-      is_anomaly,
-      road_class,
-      signalDensity,
-      los,
-      X,
-      gC,
-      d,
-      totalDelay,
-      travelTimeWithoutDelays,
-      travelTimeWithDelays,
-      finalSpeed,
-      number_of_signals,
-      S,
-      N,
-      c,
-      direction,
-      distance,
-    });
-  }
-  return newValues;
-};
-
-export const getTrafficFlow = async (req, res) => {
-  const { traceData } = req.body;
-
-  let arr = [];
-  const tt = traceData.traces.routes;
-
-  tt.forEach((el) => {
-    let index = 0;
-    let order = 0;
-    let minDistance = Infinity;
-
-    traceData.traces.coords_0.coordinates.forEach((el2, indexx) => {
-      let lon1 = el.longitude;
-      let lat1 = el.latitude;
-
-      let lon2 = el2.longitude;
-      let lat2 = el2.latitude;
-
-      let dLon = Math.abs(lon1 - lon2);
-      let dLat = Math.abs(lat1 - lat2);
-
-      let distance = dLon + dLat;
-
-      if (distance < minDistance) {
-        minDistance = distance;
-        index = indexx;
-        order = el2.order;
-      }
-    });
-
-    arr.push({ order, index, direction: "straight" });
-  });
-
-  for (let i = 0; i < arr.length - 2; i++) {
-    const p1 = traceData.traces.coords_0.coordinates[arr[i].index];
-    const p2 = traceData.traces.coords_0.coordinates[arr[i + 1].index];
-    const p3 = traceData.traces.coords_0.coordinates[arr[i + 2].index];
-
-    const direction = checkTurnDirection(p1, p2, p3);
-
-    arr[i + 1].direction = direction;
-  }
-
-  const results_0 = await getCapacity(arr, traceData, 0);
-  const results_1 = await getCapacity(arr, traceData, 1);
-  const results_2 = await getCapacity(arr, traceData, 2);
-  const object = {
-    ...traceData,
-    traces: {
-      ...traceData.traces,
-      results_0,
-      results_1,
-      results_2,
-    },
-  };
-
-  res.status(200).json(object);
-};
-
-//= ==============================================================
-
-// Funkcje pomocnicze do przetwarzania grafu
-
-const getDataForGraph = async (arr) => {
-  const rdArr = [];
-  const problems = [];
-
-  const q = "SELECT * FROM routes WHERE stop_id = ?";
-  const q2 = `
-          SELECT 
-            routes.id AS route_id, 
-            routes.order, 
-            routes.stop_id, 
-            routes.trace_id, 
-            traces.stop_from, 
-            traces.stop_end,
-            stops.longitude, 
-            stops.latitude,
-            stops.number_of_stop,
-            stops.name AS stop_name,
-            vehicles.route,
-            vehicles.type,
-            vehicles.capacity,
-            COUNT(timetables.id) AS count_timetables,
-            (COUNT(timetables.id) / 2) AS average_per_hour,
-            (vehicles.capacity * (COUNT(timetables.id) / 2)) AS capacity_per_hour
-          FROM routes 
-          JOIN traces ON traces.id = routes.trace_id 
-          JOIN stops ON stops.id = routes.stop_id
-          JOIN vehicles ON vehicles.id = traces.vehicle_id
-          LEFT JOIN timetables ON timetables.route_id = routes.id
-            AND TIME_FORMAT(NOW(), '%H:%i') <= timetables.time
-            AND TIME_FORMAT(DATE_ADD(NOW(), INTERVAL 2 HOUR), '%H:%i') > timetables.time
-          WHERE routes.trace_id = ?
-          GROUP BY 
-            routes.id, 
-            routes.order, 
-            routes.stop_id, 
-            routes.trace_id, 
-            traces.stop_from, 
-            traces.stop_end,
-            stops.longitude, 
-            stops.latitude,
-            stops.number_of_stop,
-            stops.name,
-            vehicles.route,
-            vehicles.type,
-            vehicles.capacity
-          ORDER BY routes.order ASC`;
-  for (const item of arr) {
-    const [res] = await db.query(q, [item.id]);
-    if (res.length > 0) {
-      for (const item2 of res) {
-        const [res2] = await db.query(q2, [item2.trace_id]);
-
-        let isProblem = false;
-
-        if (res2.length > 0) {
-          res2.forEach((el) => {
-            if (!el.capacity_per_hour) {
-              isProblem = true;
-            }
-          });
-        }
-
-        if (isProblem) {
-          problems.push(res2);
-        }
-
-        if (res2.length > 0 && !isProblem) {
-          rdArr.push(res2);
-        }
-      }
-    }
-  }
-
-  const array = [];
-
-  if (problems.length > 0) {
-    for (const item2 of problems) {
-      const [res] = await db.query(q, [item2.id]);
-      if (res.length > 0) {
-        for (const item3 of res) {
-          const [res2] = await db.query(q2, [item3.trace_id]);
-
-          let isProblem = false;
-
-          if (res2.length > 0) {
-            res2.forEach((el) => {
-              if (!el.capacity_per_hour) {
-                isProblem = true;
-              }
-            });
-          }
-
-          if (res2.length > 0 && !isProblem) {
-            rdArr.push(res2);
-          }
-        }
-      }
-    }
-  }
-
-  rdArr.forEach((el) => {
-    let isIn = false;
-    array.forEach((el2) => {
-      if (el[0].trace_id == el2[0].trace_id) {
-        isIn = true;
-      }
-    });
-
-    if (!isIn) {
-      array.push(el);
-    }
-  });
-
-  return array;
-};
+//===============================================================
 
 const createGraph = (allDone) => {
   startNodes = [];
@@ -1041,7 +1532,7 @@ const removeDuplicateEdges = (graph) => {
   return cleanGraph;
 };
 
-function removeEdgesAboveThreshold(graph, maxWeight) {
+const removeEdgesAboveThreshold = (graph, maxWeight) => {
   for (const node in graph) {
     graph[node] = graph[node].filter((edge) => edge.weight <= maxWeight);
     if (graph[node].length === 0) {
@@ -1050,7 +1541,7 @@ function removeEdgesAboveThreshold(graph, maxWeight) {
   }
 
   return graph;
-}
+};
 
 class PriorityQueue {
   constructor() {
@@ -1192,7 +1683,6 @@ const dijkstra = async (graph, startNode, endNode) => {
       for (let neighbor of graph[smallest]) {
         let additionalCost = 0;
 
-        // Progresywne karanie za każdą kolejną przesiadkę
         if (
           previousTraceId[smallest] !== null &&
           neighbor.trace_id !== previousTraceId[smallest]
@@ -1302,9 +1792,8 @@ const findNearestStop = async (from, to, graph) => {
 };
 
 export const getShortest = async (req, res) => {
-  const { from, to, stops, districts } = req.body;
+  const { from, to } = req.body;
 
-  const trainSpeed = 15.55; //  m/s
   const walkSpeed = 1.75; //  m/s
 
   try {
@@ -1413,11 +1902,9 @@ export const getShortest = async (req, res) => {
 
       const [respons] = await db.query(q);
 
-      // Grupowanie po trace_id
       const groupedData = respons.reduce((acc, row) => {
         const traceId = row.trace_id;
 
-        // Jeśli nie ma jeszcze grupy dla trace_id, stwórz nową
         if (!acc[traceId]) {
           acc[traceId] = {
             trace_id: traceId,
@@ -1640,7 +2127,6 @@ export const getShortest = async (req, res) => {
 
         const dataToRd3 = [];
 
-
         dataToRd2.forEach((el) => {
           const arr = [];
           let x = 0;
@@ -1678,22 +2164,19 @@ export const getShortest = async (req, res) => {
 
         const dataToRd4 = [];
 
-
         dataToRd3.forEach((el) => {
           let count = 0;
           el.forEach((el2) => {
-            if (el2.type == "Pieszo"){
+            if (el2.type == "Pieszo") {
               count++;
             }
-          })
+          });
 
-          if ((count - 2) <= 2){
+          if (count - 2 <= 2) {
             dataToRd4.push(el);
           }
-        })
+        });
 
-
-        // return;
 
         const arrToReturn = [];
 
@@ -1718,7 +2201,6 @@ export const getShortest = async (req, res) => {
           let totalTime = 0;
           let totalDelay = 0;
           let totalWalk = 0;
-          let totalTrain = 0;
           let totalTram = 0;
           let totalBus = 0;
           artr.forEach((el) => {
@@ -1728,22 +2210,6 @@ export const getShortest = async (req, res) => {
                 if (distance > 0) {
                   totalTime += distance / parseFloat(walkSpeed);
                   totalWalk += distance / parseFloat(walkSpeed);
-                }
-              }
-            } else if (el.type == "Pociąg") {
-              let total = 0;
-
-              if (el.distance && el.distance.length > 0) {
-                el.distance.forEach((el2) => {
-                  const distance = parseFloat(el2.distance);
-                  if (distance > 0) {
-                    total += distance / parseFloat(trainSpeed);
-                    totalTrain += total;
-                  }
-                });
-
-                if (total > 0) {
-                  totalTime += parseFloat(total);
                 }
               }
             } else {
@@ -1802,7 +2268,7 @@ export const getShortest = async (req, res) => {
                     (C * Math.pow(1 - gC, 2)) / (2 * (1 - X * gC)) +
                     (Math.pow(X, 2) / (2 * (1 - X))) * tc;
                   const number_of_signals = signalDensity * (distance / 1000);
-                  const tDelay = number_of_signals * d;
+                  let tDelay = number_of_signals * d;
 
                   totalTime += distance / obj.speed;
 
@@ -1829,7 +2295,6 @@ export const getShortest = async (req, res) => {
               total: {
                 totalWalk: totalWalk,
                 totalBus: totalBus,
-                totalTrain: totalTrain,
                 totalTram: totalTram,
               },
             },
@@ -1849,8 +2314,6 @@ export const getShortest = async (req, res) => {
               }
             }
           });
-
-          console.log(count);
         });
         res.status(200).json(dToReturn);
       } else {

@@ -19,52 +19,15 @@ export const sortLines = (vehicles) => {
   return sortedLines;
 };
 
-export const getStopsWithinRadius = (from, stops, radius) => {
-  const toRadians = (degree) => (degree * Math.PI) / 180;
+const sortNumbers = (a, b) => {
+  const aNumber = parseInt(a.route);
+  const bNumber = parseInt(b.route);
 
-  const distanceBetweenCoordinates = (coord1, coord2) => {
-    const earthRadiusKm = 6371;
+  return aNumber - bNumber;
+};
 
-    const dLat = toRadians(
-      parseFloat(coord2.latitude) - parseFloat(coord1.latitude)
-    );
-    const dLon = toRadians(
-      parseFloat(coord2.longitude) - parseFloat(coord1.longitude)
-    );
-
-    const lat1 = toRadians(parseFloat(coord1.latitude));
-    const lat2 = toRadians(parseFloat(coord2.latitude));
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return earthRadiusKm * c;
-  };
-
-  const stopsWithinRadius = stops.filter((stop) => {
-    const distance = distanceBetweenCoordinates(from, stop);
-    return distance <= radius;
-  });
-
-  if (stopsWithinRadius.length > 0) {
-    return stopsWithinRadius;
-  } else {
-    let closestStop = null;
-    let minDistance = Infinity;
-
-    stops.forEach((stop) => {
-      const distance = distanceBetweenCoordinates(from, stop);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestStop = stop;
-      }
-    });
-
-    return closestStop ? [closestStop] : [];
-  }
+const sortLetters = (a, b) => {
+  return a.route.localeCompare(b.route);
 };
 
 export const getDistanceFromLatLonInMeters = (lat1, lon1, lat2, lon2) => {
@@ -79,6 +42,44 @@ export const getDistanceFromLatLonInMeters = (lat1, lon1, lat2, lon2) => {
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+};
+
+export const getTimeDifferenceInMinutes = async (time1, time2) => {
+  const [hours1, minutes1] = await time1.split(":").map(Number);
+  const [hours2, minutes2] = await time2.split(":").map(Number);
+
+  const date1 = new Date();
+  date1.setHours(hours1, minutes1, 0);
+
+  const date2 = new Date();
+  date2.setHours(hours2, minutes2, 0);
+
+  const differenceInMinutes = (date2 - date1) / (1000 * 60);
+  return differenceInMinutes;
+};
+
+export const getLOSHoursPerDay = (hoursPerDay) => {
+  if (hoursPerDay > 18) {
+    return "A";
+  }
+
+  if (hoursPerDay >= 16) {
+    return "B";
+  }
+
+  if (hoursPerDay >= 13) {
+    return "C";
+  }
+
+  if (hoursPerDay >= 11) {
+    return "D";
+  }
+
+  if (hoursPerDay >= 3) {
+    return "E";
+  }
+
+  return "F";
 };
 
 export const joinDistrict = async (pAr, districts) => {
@@ -118,31 +119,6 @@ export const joinDistrict = async (pAr, districts) => {
   });
 
   return pArReturn;
-};
-
-const sortNumbers = (a, b) => {
-  const aNumber = parseInt(a.route);
-  const bNumber = parseInt(b.route);
-
-  return aNumber - bNumber;
-};
-
-const sortLetters = (a, b) => {
-  return a.route.localeCompare(b.route);
-};
-
-export const getTimeDifferenceInMinutes = async (time1, time2) => {
-  const [hours1, minutes1] = await time1.split(":").map(Number);
-  const [hours2, minutes2] = await time2.split(":").map(Number);
-
-  const date1 = new Date();
-  date1.setHours(hours1, minutes1, 0);
-
-  const date2 = new Date();
-  date2.setHours(hours2, minutes2, 0);
-
-  const differenceInMinutes = (date2 - date1) / (1000 * 60);
-  return differenceInMinutes;
 };
 
 export const isPointInPolygon = (point, polygon) => {
@@ -299,8 +275,6 @@ export const getDistances = async (trace, districts) => {
       r = await api.get(d + "5000" + url);
     } else if (type == "Tramwaj") {
       r = await api.get(d + "5001" + url);
-    } else if (type == "Pociąg") {
-      r = await api.get(d + "5002" + url);
     } else if (type == "Pieszo") {
       r = await api.get(d + "5000" + url);
     }
@@ -402,8 +376,6 @@ export const getOnlyDistances = async (array) => {
       r = await api.get(d + "5000" + url);
     } else if (type == "Tramwaj") {
       r = await api.get(d + "5001" + url);
-    } else if (type == "Pociąg") {
-      r = await api.get(d + "5002" + url);
     } else if (type == "Pieszo") {
       r = await api.get(d + "5000" + url);
     }
@@ -471,8 +443,6 @@ export const getCoordsWithDistances = async (array) => {
         r = await api.get(d + "5000" + url);
       } else if (type == "Tramwaj") {
         r = await api.get(d + "5001" + url);
-      } else if (type == "Pociąg") {
-        r = await api.get(d + "5002" + url);
       } else if (type == "Pieszo") {
         r = await api.get(d + "5000" + url);
       }
@@ -527,4 +497,208 @@ export const getCoordsWithDistances = async (array) => {
   }
 
   return rd;
+};
+
+// exhibit 15-2
+export const getLOSClass = (road_class, avgSpeed) => {
+  const kmh = avgSpeed * 3.6;
+  switch (road_class) {
+    case "I":
+      if (kmh <= 26) {
+        return "F";
+      } else if (kmh > 26 && kmh <= 32) {
+        return "E";
+      } else if (kmh > 32 && kmh <= 40) {
+        return "D";
+      } else if (kmh > 40 && kmh <= 56) {
+        return "C";
+      } else if (kmh > 56 && kmh <= 72) {
+        return "B";
+      } else {
+        return "A";
+      }
+
+    case "II":
+      if (kmh <= 21) {
+        return "F";
+      } else if (kmh > 21 && kmh <= 26) {
+        return "E";
+      } else if (kmh > 26 && kmh <= 33) {
+        return "D";
+      } else if (kmh > 33 && kmh <= 46) {
+        return "C";
+      } else if (kmh > 46 && kmh <= 59) {
+        return "B";
+      } else {
+        return "A";
+      }
+
+    case "III":
+      if (kmh <= 17) {
+        return "F";
+      } else if (kmh > 17 && kmh <= 22) {
+        return "E";
+      } else if (kmh > 22 && kmh <= 28) {
+        return "D";
+      } else if (kmh > 28 && kmh <= 39) {
+        return "C";
+      } else if (kmh > 39 && kmh <= 50) {
+        return "B";
+      } else {
+        return "A";
+      }
+
+    case "IV":
+      if (kmh <= 14) {
+        return "F";
+      } else if (kmh > 14 && kmh <= 18) {
+        return "E";
+      } else if (kmh > 18 && kmh <= 23) {
+        return "D";
+      } else if (kmh > 23 && kmh <= 32) {
+        return "C";
+      } else if (kmh > 32 && kmh <= 41) {
+        return "B";
+      } else {
+        return "A";
+      }
+  }
+};
+
+// exhibit 10-5
+export const getRoadClass = (freeFlow) => {
+  const kmh = freeFlow * 3.6;
+
+  if (kmh >= 80) return "I";
+  if (kmh >= 65) return "II";
+  if (kmh >= 55) return "III";
+
+  return "IV";
+};
+
+export const calculateTimeDifference = (time1, time2) => {
+  const [hours1, minutes1] = time1.split(":").map(Number);
+  const [hours2, minutes2] = time2.split(":").map(Number);
+
+  const totalMinutes1 = hours1 * 60 + minutes1;
+  const totalMinutes2 = hours2 * 60 + minutes2;
+
+  let diffMinutes = totalMinutes2 - totalMinutes1;
+
+  const hours = Math.floor(Math.abs(diffMinutes) / 60);
+  const minutes = Math.abs(diffMinutes) % 60;
+
+  return { hours, minutes };
+};
+
+// exhibit 10-6
+export const getSignalDensity = (road_class) => {
+  switch (road_class) {
+    case "I":
+      return 0.5;
+    case "II":
+      return 2;
+    case "III":
+      return 4;
+    case "IV":
+      return 6;
+  }
+};
+
+//exhibit 15-8 -> 15-11
+export const getVCRatio = (road_class, travelSpeed, signalDensity) => {
+  const kmh = travelSpeed * 3.6;
+
+  switch (road_class) {
+    case "I":
+      if (signalDensity === 0.5) {
+        if (kmh >= 70) return 0.0;
+        if (kmh >= 60 && kmh < 70) return 0.2;
+        if (kmh >= 50 && kmh < 60) return 0.4;
+        if (kmh >= 40 && kmh < 50) return 0.6;
+        if (kmh < 40) return 0.8;
+      } else if (signalDensity === 1) {
+        if (kmh >= 60) return 0.0;
+        if (kmh >= 50 && kmh < 60) return 0.2;
+        if (kmh >= 40 && kmh < 50) return 0.4;
+        if (kmh >= 30 && kmh < 40) return 0.6;
+        if (kmh < 30) return 0.8;
+      } else if (signalDensity === 2) {
+        if (kmh >= 50) return 0.0;
+        if (kmh >= 40 && kmh < 50) return 0.2;
+        if (kmh >= 30 && kmh < 40) return 0.4;
+        if (kmh >= 20 && kmh < 30) return 0.6;
+        if (kmh < 20) return 0.8;
+      }
+      break;
+
+    case "II":
+      if (signalDensity === 0.5) {
+        if (kmh >= 60) return 0.0;
+        if (kmh >= 50 && kmh < 60) return 0.2;
+        if (kmh >= 40 && kmh < 50) return 0.4;
+        if (kmh >= 30 && kmh < 40) return 0.6;
+        if (kmh < 30) return 0.8;
+      } else if (signalDensity === 1) {
+        if (kmh >= 50) return 0.0;
+        if (kmh >= 40 && kmh < 50) return 0.2;
+        if (kmh >= 30 && kmh < 40) return 0.4;
+        if (kmh >= 20 && kmh < 30) return 0.6;
+        if (kmh < 20) return 0.8;
+      } else if (signalDensity === 2) {
+        if (kmh >= 40) return 0.0;
+        if (kmh >= 30 && kmh < 40) return 0.2;
+        if (kmh >= 20 && kmh < 30) return 0.4;
+        if (kmh >= 15 && kmh < 20) return 0.6;
+        if (kmh < 15) return 0.8;
+      }
+      break;
+
+    case "III":
+      if (signalDensity === 2) {
+        if (kmh >= 40) return 0.0;
+        if (kmh >= 30 && kmh < 40) return 0.2;
+        if (kmh >= 25 && kmh < 30) return 0.4;
+        if (kmh >= 20 && kmh < 25) return 0.6;
+        if (kmh < 20) return 0.8;
+      } else if (signalDensity === 3) {
+        if (kmh >= 35) return 0.0;
+        if (kmh >= 28 && kmh < 35) return 0.2;
+        if (kmh >= 20 && kmh < 28) return 0.4;
+        if (kmh >= 15 && kmh < 20) return 0.6;
+        if (kmh < 15) return 0.8;
+      } else if (signalDensity === 4) {
+        if (kmh >= 30) return 0.0;
+        if (kmh >= 25 && kmh < 30) return 0.2;
+        if (kmh >= 18 && kmh < 25) return 0.4;
+        if (kmh >= 12 && kmh < 18) return 0.6;
+        if (kmh < 12) return 0.8;
+      }
+      break;
+
+    case "IV":
+      if (signalDensity === 4) {
+        if (kmh >= 25) return 0.0;
+        if (kmh >= 20 && kmh < 25) return 0.2;
+        if (kmh >= 15 && kmh < 20) return 0.4;
+        if (kmh >= 10 && kmh < 15) return 0.6;
+        if (kmh < 10) return 0.8;
+      } else if (signalDensity === 5) {
+        if (kmh >= 20) return 0.0;
+        if (kmh >= 15 && kmh < 20) return 0.2;
+        if (kmh >= 10 && kmh < 15) return 0.4;
+        if (kmh >= 8 && kmh < 10) return 0.6;
+        if (kmh < 8) return 0.8;
+      } else if (signalDensity === 6) {
+        if (kmh >= 18) return 0.0;
+        if (kmh >= 12 && kmh < 18) return 0.2;
+        if (kmh >= 8 && kmh < 12) return 0.4;
+        if (kmh >= 5 && kmh < 8) return 0.6;
+        if (kmh < 5) return 0.8;
+      }
+      break;
+
+    default:
+      return null;
+  }
 };
